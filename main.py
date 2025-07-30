@@ -14,6 +14,9 @@ class Ui_MainWindow(object):
 		MainWindow.resize(1600, 1200)
 		MainWindow.setMinimumSize(QtCore.QSize(1600, 1200))
 
+		self.model_path = None
+		self.real_path = None
+
 		self.centralwidget = QtWidgets.QWidget(MainWindow)
 		self.centralwidget.setObjectName("centralwidget")
 
@@ -67,22 +70,26 @@ class Ui_MainWindow(object):
 		self.tableWidget.horizontalHeader().setDefaultSectionSize(93)
 		self.verticalLayout.addWidget(self.tableWidget)
 		self.horizontalLayout_3.addLayout(self.verticalLayout)
+
 		self.line = QtWidgets.QFrame(self.centralwidget)
 		self.line.setFrameShape(QtWidgets.QFrame.VLine)
 		self.line.setFrameShadow(QtWidgets.QFrame.Sunken)
 		self.line.setObjectName("line")
 		self.horizontalLayout_3.addWidget(self.line)
+
 		self.verticalLayout_2 = QtWidgets.QVBoxLayout()
 		self.verticalLayout_2.setObjectName("verticalLayout_2")
 		self.graphicsView_2 = QtWidgets.QGraphicsView(self.centralwidget)
 		self.graphicsView_2.setMinimumSize(QtCore.QSize(820, 0))
 		self.graphicsView_2.setObjectName("graphicsView_2")
 		self.verticalLayout_2.addWidget(self.graphicsView_2)
+
 		self.graphicsView_1 = QtWidgets.QGraphicsView(self.centralwidget)
 		self.graphicsView_1.setMinimumSize(QtCore.QSize(418, 0))
 		self.graphicsView_1.setObjectName("graphicsView_1")
 		self.verticalLayout_2.addWidget(self.graphicsView_1)
 		self.horizontalLayout_3.addLayout(self.verticalLayout_2)
+
 		MainWindow.setCentralWidget(self.centralwidget)
 
 		self.setupUI(MainWindow)
@@ -113,7 +120,37 @@ class Ui_MainWindow(object):
 		self.scene.addItem(pixmap_item)
 
 	def openImg(self, type: str):
-		print(type)
+		dialog = QtWidgets.QFileDialog()
+		folder_path = dialog.getExistingDirectory(None, "Выберите папку", "", QtWidgets.QFileDialog.ShowDirsOnly)
+		if folder_path:
+			if type == "model":
+				self.model_path = folder_path + "/test.png"
+			elif type == "real":
+				self.real_path = folder_path + "/test.png"
+			self.setImg(type)
+
+	def setImg(self, type: str):
+		path = self.model_path if type == "model" else self.real_path
+		if not QtCore.QFile.exists(path):
+			print(f"Ошибка: файл {path} не существует!")
+			return
+
+		scene = QtWidgets.QGraphicsScene()
+		pixmap = QPixmap(path)
+
+		if pixmap.isNull():
+			print(f"Ошибка: не удалось загрузить изображение из {path}!")
+			return
+
+		pixmap_item = QtWidgets.QGraphicsPixmapItem(pixmap)
+		scene.addItem(pixmap_item)
+
+		view = self.graphicsView_2 if type == "model" else self.graphicsView_1
+		view.setScene(scene)
+
+		view.fitInView(scene.itemsBoundingRect(), QtCore.Qt.KeepAspectRatio)
+		view.setRenderHint(QtGui.QPainter.Antialiasing)
+
 
 
 class MainWindow(QMainWindow):
