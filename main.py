@@ -5,9 +5,10 @@ import cv2
 import numpy as np
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore import pyqtSlot, Qt, QPoint
+from PyQt5.QtCore import pyqtSlot, Qt, QPoint, QSize
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QCursor
-from PyQt5.QtWidgets import QMainWindow, QApplication, QGraphicsPixmapItem, QGraphicsScene
+from PyQt5.QtWidgets import QMainWindow, QApplication, QGraphicsPixmapItem, QGraphicsScene, QSizePolicy, QSpacerItem, \
+	QPushButton, QLabel
 
 
 class CustomGraphicsView(QtWidgets.QGraphicsView):
@@ -199,7 +200,7 @@ class Ui_MainWindow(object):
 	def setupUi(self, MainWindow):
 		MainWindow.setObjectName("MainWindow")
 		MainWindow.resize(1600, 1200)
-		MainWindow.setMinimumSize(QtCore.QSize(1600, 1200))
+		MainWindow.setMinimumSize(QSize(1600, 1200))
 
 		self.model_path = None
 		self.real_path = None
