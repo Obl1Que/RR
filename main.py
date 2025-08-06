@@ -1,11 +1,139 @@
 # -*- coding: utf-8 -*-
-
+import os
 import sys
+import cv2
+import numpy as np
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore import pyqtSlot
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QMainWindow, QApplication, QGraphicsPixmapItem
+from PyQt5.QtCore import pyqtSlot, Qt, QPoint
+from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QCursor
+from PyQt5.QtWidgets import QMainWindow, QApplication, QGraphicsPixmapItem, QGraphicsScene
+
+
+class CustomGraphicsView(QtWidgets.QGraphicsView):
+	def __init__(self, parent=None):
+		super().__init__(parent)
+		self.setMouseTracking(True)
+		self.semantic_mask = None
+		self.base_image = None
+		self.base_pixmap = None  # Базовое изображение в виде QPixmap
+		self.current_class = None  # Текущий подсвеченный класс
+		self.scene = QGraphicsScene(self)
+		self.setScene(self.scene)
+		self.highlight_cache = {}  # Кэш для подсвеченных изображений
+
+	def set_images(self, base_image_path, semantic_mask_path):
+		# Очищаем кэш при загрузке новых изображений
+		self.highlight_cache.clear()
+		self.current_class = None
+
+		# Загружаем основное изображение
+		self.base_image = cv2.imread(base_image_path, cv2.IMREAD_COLOR)
+		if self.base_image is not None:
+			self.base_image = cv2.cvtColor(self.base_image, cv2.COLOR_BGR2RGB)
+			height, width, channel = self.base_image.shape
+			bytes_per_line = 3 * width
+			q_img = QImage(self.base_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
+			self.base_pixmap = QPixmap.fromImage(q_img)
+
+		# Загружаем семантическую маску
+		if semantic_mask_path and os.path.exists(semantic_mask_path):
+			self.semantic_mask = cv2.imread(semantic_mask_path, cv2.IMREAD_GRAYSCALE)
+
+		self.update_display(force_base=True)
+
+	def debug_show_pixmap(self, pixmap, window_name="Debug"):
+		"""Вспомогательная функция для отображения QPixmap через cv2"""
+		# Преобразуем QPixmap в QImage
+		qimage = pixmap.toImage()
+
+		# Конвертируем QImage в формат, который понимает OpenCV
+		qimage = qimage.convertToFormat(QImage.Format_RGB888)
+		width = qimage.width()
+		height = qimage.height()
+		ptr = qimage.bits()
+		ptr.setsize(qimage.byteCount())
+
+		# Создаем numpy array
+		arr = np.array(ptr).reshape(height, width, 3)  # 3 канала для RGB
+
+		# Конвертируем RGB в BGR (как ожидает OpenCV)
+		cv_image = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+
+		# Показываем изображение
+		cv2.imshow(window_name, cv_image)
+		cv2.waitKey(0)
+		cv2.destroyAllWindows()
+
+	def update_display(self, pixmap=None, force_base=False):
+		if force_base and self.base_pixmap:
+			self.scene.clear()
+			self.scene.addPixmap(self.base_pixmap)
+			self.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+		elif pixmap:
+			self.scene.clear()
+			self.scene.addPixmap(pixmap)
+			self.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+
+	def highlight_class(self, class_id):
+		if class_id == self.current_class:
+			return
+
+		if class_id == 0 or class_id is None:
+			self.current_class = None
+			self.update_display(force_base=True)
+			return
+
+		if class_id in self.highlight_cache:
+			self.current_class = class_id
+			self.update_display(pixmap=self.highlight_cache[class_id])
+			return
+
+		# Создаем маску
+		mask = (self.semantic_mask == class_id).astype(np.uint8)
+
+		# Создаем изображение с подсветкой
+		highlighted = self.base_image.copy()
+
+		# Альфа-смешение с полупрозрачным цветом
+		highlight_color = np.array([255, 255, 255], dtype=np.uint8)
+		alpha = 0.75  # Прозрачность подсветки
+
+		for c in range(3):
+			highlighted[:, :, c] = np.where(
+				mask,
+				(highlighted[:, :, c] * (1 - alpha) + highlight_color[c] * alpha).astype(np.uint8),
+				highlighted[:, :, c]
+			)
+
+		# Конвертируем и кэшируем
+		height, width, _ = highlighted.shape
+		q_img = QImage(highlighted.data, width, height, 3 * width, QImage.Format_RGB888).copy()
+		pixmap = QPixmap.fromImage(q_img)
+		self.highlight_cache[class_id] = pixmap
+		self.current_class = class_id
+		self.update_display(pixmap=pixmap)
+
+	def mouseMoveEvent(self, event):
+		if self.semantic_mask is None or self.base_image is None:
+			return super().mouseMoveEvent(event)
+
+		# Получаем координаты курсора относительно изображения
+		pos = self.mapToScene(event.pos())
+		x, y = int(pos.x()), int(pos.y())
+
+		# Проверяем границы изображения
+		if 0 <= x < self.semantic_mask.shape[1] and 0 <= y < self.semantic_mask.shape[0]:
+			class_id = self.semantic_mask[y, x]
+			self.highlight_class(class_id)
+		else:
+			self.highlight_class(None)
+
+		super().mouseMoveEvent(event)
+
+	def leaveEvent(self, event):
+		self.highlight_class(None)
+		super().leaveEvent(event)
 
 
 class Ui_MainWindow(object):
@@ -89,12 +217,12 @@ class Ui_MainWindow(object):
 
 		self.verticalLayout_2 = QtWidgets.QVBoxLayout()
 		self.verticalLayout_2.setObjectName("verticalLayout_2")
-		self.graphicsView_2 = QtWidgets.QGraphicsView(self.centralwidget)
+		self.graphicsView_2 = CustomGraphicsView(self.centralwidget)
 		self.graphicsView_2.setMinimumSize(QtCore.QSize(820, 0))
 		self.graphicsView_2.setObjectName("graphicsView_2")
 		self.verticalLayout_2.addWidget(self.graphicsView_2)
 
-		self.graphicsView_1 = QtWidgets.QGraphicsView(self.centralwidget)
+		self.graphicsView_1 = CustomGraphicsView(self.centralwidget)
 		self.graphicsView_1.setMinimumSize(QtCore.QSize(418, 0))
 		self.graphicsView_1.setObjectName("graphicsView_1")
 		self.verticalLayout_2.addWidget(self.graphicsView_1)
