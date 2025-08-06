@@ -282,6 +282,59 @@ class Ui_MainWindow(object):
 		self.graphicsView_2.setObjectName("graphicsView_2")
 		self.verticalLayout_2.addWidget(self.graphicsView_2)
 
+		self.gridLayout = QtWidgets.QGridLayout()
+		self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+		self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+		self.pushButton_05 = QPushButton(self.centralwidget)
+		self.pushButton_05.setMinimumSize(QSize(100, 0))
+		self.pushButton_05.clicked.connect(lambda: self.setText('u-'))
+
+		self.pushButton_06 = QPushButton(self.centralwidget)
+		self.pushButton_06.clicked.connect(lambda: self.setText('d-'))
+
+		self.pushButton_07 = QPushButton(self.centralwidget)
+		sizePolicy = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+		sizePolicy.setHeightForWidth(self.pushButton_07.sizePolicy().hasHeightForWidth())
+		self.pushButton_07.setSizePolicy(sizePolicy)
+		self.pushButton_07.setMinimumSize(QSize(100, 0))
+		self.pushButton_07.clicked.connect(lambda: self.setText('a--'))
+
+		self.pushButton_08 = QPushButton(self.centralwidget)
+		sizePolicy.setHeightForWidth(self.pushButton_08.sizePolicy().hasHeightForWidth())
+		self.pushButton_08.setSizePolicy(sizePolicy)
+		self.pushButton_08.setMinimumSize(QSize(100, 0))
+		self.pushButton_08.clicked.connect(lambda: self.setText('a++'))
+
+		self.pushButton_09 = QPushButton(self.centralwidget)
+		self.pushButton_09.setMinimumSize(QSize(100, 0))
+		self.pushButton_09.clicked.connect(lambda: self.setText('u+'))
+
+		self.pushButton_10 = QPushButton(self.centralwidget)
+		self.pushButton_10.clicked.connect(lambda: self.setText('d+'))
+
+		self.label_01 = QLabel(self.centralwidget)
+		self.label_01.setMinimumSize(QSize(100, 0))
+		self.label_01.setAlignment(Qt.AlignCenter)
+
+		self.label_02 = QLabel(self.centralwidget)
+		self.label_02.setMinimumSize(QSize(100, 0))
+		self.label_02.setAlignment(Qt.AlignCenter)
+
+
+		self.verticalLayout_2.addLayout(self.gridLayout)
+
+		self.gridLayout.addItem(self.horizontalSpacer, 0, 0, 1, 1)
+		self.gridLayout.addWidget(self.pushButton_05, 0, 1, 1, 1)
+		self.gridLayout.addWidget(self.pushButton_07, 0, 2, 2, 1)
+		self.gridLayout.addWidget(self.label_01, 0, 3, 1, 1)
+		self.gridLayout.addWidget(self.pushButton_08, 0, 4, 2, 1)
+		self.gridLayout.addWidget(self.pushButton_09, 0, 5, 1, 1)
+		self.gridLayout.addItem(self.horizontalSpacer_2, 0, 6, 1, 1)
+		self.gridLayout.addWidget(self.pushButton_06, 1, 1, 1, 1)
+		self.gridLayout.addWidget(self.pushButton_10, 1, 5, 1, 1)
+		self.gridLayout.addWidget(self.label_02, 1, 3, 1, 1)
+
 		self.graphicsView_1 = CustomGraphicsView(self.centralwidget)
 		self.graphicsView_1.setMinimumSize(QSize(418, 0))
 		self.graphicsView_1.setObjectName("graphicsView_1")
@@ -300,6 +353,16 @@ class Ui_MainWindow(object):
 		self.pushButton_2.setText(_translate("MainWindow", "Открыть реальное изображение"))
 		self.pushButton_3.setText(_translate("MainWindow", "Сохранить RGB разметку"))
 		self.pushButton_4.setText(_translate("MainWindow", "Сохранить таблицу"))
+
+		self.pushButton_05.setText(_translate("MainWindow", "<---"))
+		self.pushButton_06.setText(_translate("MainWindow", "<---"))
+		self.pushButton_07.setText(_translate("MainWindow", "<=="))
+		self.pushButton_08.setText(_translate("MainWindow", "==>"))
+		self.pushButton_09.setText(_translate("MainWindow", "--->"))
+		self.pushButton_10.setText(_translate("MainWindow", "--->"))
+
+		self.label_01.setText("")
+		self.label_02.setText("")
 
 		self.scene = QtWidgets.QGraphicsScene()
 		self.graphicsView.setScene(self.scene)
@@ -326,6 +389,10 @@ class Ui_MainWindow(object):
 			elif type == "real":
 				self.real_path = folder_path
 			self.setImg(type)
+
+	def setText(self, type):
+		self.label_01.setText(type)
+
 
 	def setImg(self, type: str):
 		path = self.model_path if type == "model" else self.real_path
