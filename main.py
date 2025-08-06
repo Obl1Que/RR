@@ -42,29 +42,6 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 
 		self.update_display(force_base=True)
 
-	def debug_show_pixmap(self, pixmap, window_name="Debug"):
-		"""Вспомогательная функция для отображения QPixmap через cv2"""
-		# Преобразуем QPixmap в QImage
-		qimage = pixmap.toImage()
-
-		# Конвертируем QImage в формат, который понимает OpenCV
-		qimage = qimage.convertToFormat(QImage.Format_RGB888)
-		width = qimage.width()
-		height = qimage.height()
-		ptr = qimage.bits()
-		ptr.setsize(qimage.byteCount())
-
-		# Создаем numpy array
-		arr = np.array(ptr).reshape(height, width, 3)  # 3 канала для RGB
-
-		# Конвертируем RGB в BGR (как ожидает OpenCV)
-		cv_image = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-
-		# Показываем изображение
-		cv2.imshow(window_name, cv_image)
-		cv2.waitKey(0)
-		cv2.destroyAllWindows()
-
 	def update_display(self, pixmap=None, force_base=False):
 		if force_base and self.base_pixmap:
 			self.scene.clear()
