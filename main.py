@@ -15,44 +15,122 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 		super().__init__(parent)
 		self.setMouseTracking(True)
 		self.semantic_mask = None
+		self.instance_masks = []
+		self.instance_paths = []
 		self.base_image = None
-		self.base_pixmap = None  # Базовое изображение в виде QPixmap
-		self.current_class = None  # Текущий подсвеченный класс
+		self.base_pixmap = None
+		self.current_class = None
+		self.current_instance = None
 		self.scene = QGraphicsScene(self)
 		self.setScene(self.scene)
-		self.highlight_cache = {}  # Кэш для подсвеченных изображений
+		self.highlight_cache = {}
+		self.instance_cache = {}
 
-	def set_images(self, base_image_path, semantic_mask_path):
-		# Очищаем кэш при загрузке новых изображений
+	def set_images(self, base_image_path, semantic_mask_path, instance_paths=None):
 		self.highlight_cache.clear()
+		self.instance_cache.clear()
 		self.current_class = None
+		self.current_instance = None
 
 		# Загружаем основное изображение
 		self.base_image = cv2.imread(base_image_path, cv2.IMREAD_COLOR)
 		if self.base_image is not None:
 			self.base_image = cv2.cvtColor(self.base_image, cv2.COLOR_BGR2RGB)
 			height, width, channel = self.base_image.shape
-			bytes_per_line = 3 * width
-			q_img = QImage(self.base_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
+			q_img = QImage(self.base_image.data, width, height, 3 * width, QImage.Format_RGB888)
 			self.base_pixmap = QPixmap.fromImage(q_img)
 
 		# Загружаем семантическую маску
 		if semantic_mask_path and os.path.exists(semantic_mask_path):
 			self.semantic_mask = cv2.imread(semantic_mask_path, cv2.IMREAD_GRAYSCALE)
 
+		# Загрузка масок инстансов
+		self.instance_masks = []
+		if instance_paths:
+			self.instance_paths = instance_paths
+			for path in instance_paths:
+				mask = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+				if mask is not None:
+					self.instance_masks.append(mask)
 		self.update_display(force_base=True)
 
 	def update_display(self, pixmap=None, force_base=False):
 		if force_base and self.base_pixmap:
 			self.scene.clear()
-			self.scene.addPixmap(self.base_pixmap)
-			self.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+			item = self.scene.addPixmap(self.base_pixmap)
+			self.scene.setSceneRect(item.boundingRect())
 		elif pixmap:
 			self.scene.clear()
-			self.scene.addPixmap(pixmap)
-			self.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+			item = self.scene.addPixmap(pixmap)
+			self.scene.setSceneRect(item.boundingRect())
+
+		self.fitInView(self.scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
+		self.viewport().update()
+
+	def highlight_area(self, pos, ctrl_pressed):
+		if self.base_image is None:
+			return
+
+		x, y = int(pos.x()), int(pos.y())
+
+		# Проверяем границы изображения
+		if not (0 <= x < self.base_image.shape[1] and 0 <= y < self.base_image.shape[0]):
+			self.current_instance = None
+			self.current_class = None
+			self.update_display(force_base=True)
+			return
+
+		if ctrl_pressed:
+			# Режим инстансов - игнорируем текущий класс
+			self.current_class = None
+			if self.instance_masks:
+				for i, mask in enumerate(self.instance_masks):
+					if mask is not None and 0 <= x < mask.shape[1] and 0 <= y < mask.shape[0] and mask[y, x] > 0:
+						if i == self.current_instance:
+							return
+
+						self.current_instance = i
+
+						if i in self.instance_cache:
+							self.update_display(pixmap=self.instance_cache[i])
+							return
+
+						# Создаем подсветку для инстанса
+						highlighted = self.base_image.copy()
+						mask_bool = (mask > 0)
+						highlight_color = np.array([255, 255, 255], dtype=np.uint8)
+						alpha = 0.75
+
+						for c in range(3):
+							highlighted[:, :, c] = np.where(
+								mask_bool,
+								(highlighted[:, :, c] * (1 - alpha) + highlight_color[c] * alpha).astype(np.uint8),
+								highlighted[:, :, c]
+							)
+
+						# Кэшируем и отображаем
+						height, width, _ = highlighted.shape
+						q_img = QImage(highlighted.data, width, height, 3 * width, QImage.Format_RGB888).copy()
+						pixmap = QPixmap.fromImage(q_img)
+						self.instance_cache[i] = pixmap
+						self.update_display(pixmap=pixmap)
+						return
+		else:
+			# Режим семантики - игнорируем текущий инстанс
+			self.current_instance = None
+			if self.semantic_mask is not None and 0 <= x < self.semantic_mask.shape[1] and 0 <= y < \
+					self.semantic_mask.shape[0]:
+				class_id = self.semantic_mask[y, x]
+				self.highlight_class(class_id)
+				return
+
+		# Если ничего не найдено, сбрасываем подсветку
+		self.current_instance = None
+		self.current_class = None
+		self.update_display(force_base=True)
 
 	def highlight_class(self, class_id):
+		"""Подсветка семантического класса"""
 		if class_id == self.current_class:
 			return
 
@@ -74,7 +152,7 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 
 		# Альфа-смешение с полупрозрачным цветом
 		highlight_color = np.array([255, 255, 255], dtype=np.uint8)
-		alpha = 0.75  # Прозрачность подсветки
+		alpha = 0.75
 
 		for c in range(3):
 			highlighted[:, :, c] = np.where(
@@ -92,24 +170,28 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 		self.update_display(pixmap=pixmap)
 
 	def mouseMoveEvent(self, event):
-		if self.semantic_mask is None or self.base_image is None:
+		if self.base_image is None:
 			return super().mouseMoveEvent(event)
 
-		# Получаем координаты курсора относительно изображения
+		# Определяем состояние Ctrl
+		new_ctrl_pressed = event.modifiers() & Qt.ControlModifier
+
+		# Если состояние Ctrl изменилось, сбрасываем текущие подсвеченные элементы
+		if hasattr(self, 'last_ctrl_pressed') and self.last_ctrl_pressed != new_ctrl_pressed:
+			self.current_class = None
+			self.current_instance = None
+
+		self.last_ctrl_pressed = new_ctrl_pressed
+
 		pos = self.mapToScene(event.pos())
-		x, y = int(pos.x()), int(pos.y())
-
-		# Проверяем границы изображения
-		if 0 <= x < self.semantic_mask.shape[1] and 0 <= y < self.semantic_mask.shape[0]:
-			class_id = self.semantic_mask[y, x]
-			self.highlight_class(class_id)
-		else:
-			self.highlight_class(None)
-
+		self.highlight_area(pos, new_ctrl_pressed)
 		super().mouseMoveEvent(event)
 
 	def leaveEvent(self, event):
-		self.highlight_class(None)
+		if self.current_class is not None or self.current_instance is not None:
+			self.current_class = None
+			self.current_instance = None
+			self.update_display(force_base=True)
 		super().leaveEvent(event)
 
 
@@ -258,20 +340,26 @@ class Ui_MainWindow(object):
 			self.folder_actual = self.folder_counter[0]
 
 		def _get_first_file(path, subfolder):
-			return os.path.join(path, self.folder_actual, subfolder, os.listdir(os.path.join(path, self.folder_actual, subfolder))[0])
+			return os.path.join(path, self.folder_actual, subfolder,
+								os.listdir(os.path.join(path, self.folder_actual, subfolder))[0])
 
 		# Очищаем предыдущие данные
 		if type == "real":
 			self.real_instances = []
+			instance_dir = os.path.join(path, self.folder_actual, 'instance')
+			instance_paths = [os.path.join(instance_dir, f) for f in os.listdir(instance_dir)]
+
 			self.real_ir = _get_first_file(path, 'ir')
 			self.real_semantic = _get_first_file(path, 'semantic')
-			self.graphicsView_1.set_images(self.real_ir, self.real_semantic)
+			self.graphicsView_1.set_images(self.real_ir, self.real_semantic, instance_paths)
 		elif type == "model":
 			self.model_instances = []
+			instance_dir = os.path.join(path, self.folder_actual, 'instance')
+			instance_paths = [os.path.join(instance_dir, f) for f in os.listdir(instance_dir)]
+
 			self.model_ir = _get_first_file(path, 'ir')
 			self.model_semantic = _get_first_file(path, 'semantic')
-			self.graphicsView_2.set_images(self.model_ir, self.model_semantic)
-
+			self.graphicsView_2.set_images(self.model_ir, self.model_semantic, instance_paths)
 
 
 class MainWindow(QMainWindow):
