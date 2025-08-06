@@ -16,6 +16,16 @@ class Ui_MainWindow(object):
 
 		self.model_path = None
 		self.real_path = None
+		self.folder_actual = None
+		self.folder_counter = {}
+
+		self.model_instances = []
+		self.model_ir = ''
+		self.model_semantic = ''
+
+		self.real_instances = []
+		self.real_ir = ''
+		self.real_semantic = ''
 
 		self.centralwidget = QtWidgets.QWidget(MainWindow)
 		self.centralwidget.setObjectName("centralwidget")
@@ -124,9 +134,9 @@ class Ui_MainWindow(object):
 		folder_path = dialog.getExistingDirectory(None, "Выберите папку", "", QtWidgets.QFileDialog.ShowDirsOnly)
 		if folder_path:
 			if type == "model":
-				self.model_path = folder_path + "/test.png"
+				self.model_path = folder_path
 			elif type == "real":
-				self.real_path = folder_path + "/test.png"
+				self.real_path = folder_path
 			self.setImg(type)
 
 	def setImg(self, type: str):
@@ -135,21 +145,27 @@ class Ui_MainWindow(object):
 			print(f"Ошибка: файл {path} не существует!")
 			return
 
-		scene = QtWidgets.QGraphicsScene()
-		pixmap = QPixmap(path)
+		for idx, folder in enumerate(os.listdir(path)):
+			if os.path.isdir(os.path.join(path, folder)):
+				self.folder_counter[idx] = folder
 
-		if pixmap.isNull():
-			print(f"Ошибка: не удалось загрузить изображение из {path}!")
-			return
+		if self.folder_counter:
+			self.folder_actual = self.folder_counter[0]
 
-		pixmap_item = QtWidgets.QGraphicsPixmapItem(pixmap)
-		scene.addItem(pixmap_item)
+		def _get_first_file(path, subfolder):
+			return os.path.join(path, self.folder_actual, subfolder, os.listdir(os.path.join(path, self.folder_actual, subfolder))[0])
 
-		view = self.graphicsView_2 if type == "model" else self.graphicsView_1
-		view.setScene(scene)
-
-		view.fitInView(scene.itemsBoundingRect(), QtCore.Qt.KeepAspectRatio)
-		view.setRenderHint(QtGui.QPainter.Antialiasing)
+		# Очищаем предыдущие данные
+		if type == "real":
+			self.real_instances = []
+			self.real_ir = _get_first_file(path, 'ir')
+			self.real_semantic = _get_first_file(path, 'semantic')
+			self.graphicsView_1.set_images(self.real_ir, self.real_semantic)
+		elif type == "model":
+			self.model_instances = []
+			self.model_ir = _get_first_file(path, 'ir')
+			self.model_semantic = _get_first_file(path, 'semantic')
+			self.graphicsView_2.set_images(self.model_ir, self.model_semantic)
 
 
 
