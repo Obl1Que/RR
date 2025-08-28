@@ -3,6 +3,7 @@ import os
 import sys
 import cv2
 import numpy as np
+import json
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import pyqtSlot, Qt, QPoint, QSize
@@ -32,6 +33,7 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 		self.instance_cache.clear()
 		self.current_class = None
 		self.current_instance = None
+		self.instance_paths = instance_paths if instance_paths else []
 
 		# Загружаем основное изображение
 		self.base_image = cv2.imread(base_image_path, cv2.IMREAD_COLOR)
@@ -170,6 +172,30 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 		self.current_class = class_id
 		self.update_display(pixmap=pixmap)
 
+	def mousePressEvent(self, event):
+		if event.button() == Qt.LeftButton:
+			pos = self.mapToScene(event.pos())
+			x, y = int(pos.x()), int(pos.y())
+
+			# Проверяем границы изображения
+			if not (0 <= x < self.base_image.shape[1] and 0 <= y < self.base_image.shape[0]):
+				return
+
+			ctrl_pressed = event.modifiers() & Qt.ControlModifier
+
+			if ctrl_pressed and self.instance_masks:
+				for i, mask in enumerate(self.instance_masks):
+					if mask is not None and mask[y, x] > 0:
+						instance_name = os.path.basename(self.instance_paths[i])
+						print(f"Instance: {instance_name}")
+						break
+			elif self.semantic_mask is not None:
+				# Режим семантики
+				class_id = self.semantic_mask[y, x]
+				print(f"Class ID: {class_id}")
+
+		super().mousePressEvent(event)
+
 	def mouseMoveEvent(self, event):
 		if self.base_image is None:
 			return super().mouseMoveEvent(event)
@@ -198,7 +224,6 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 
 class Ui_MainWindow(object):
 	def setupUi(self, MainWindow):
-		MainWindow.setObjectName("MainWindow")
 		MainWindow.resize(1600, 1200)
 		MainWindow.setMinimumSize(QSize(1600, 1200))
 
@@ -215,49 +240,43 @@ class Ui_MainWindow(object):
 		self.real_ir = ''
 		self.real_semantic = ''
 
+		self.model_current_idx = 0
+		self.real_current_idx = 0
+
 		self.centralwidget = QtWidgets.QWidget(MainWindow)
-		self.centralwidget.setObjectName("centralwidget")
 
 		self.horizontalLayout_3 = QtWidgets.QHBoxLayout(self.centralwidget)
-		self.horizontalLayout_3.setObjectName("horizontalLayout_3")
 		self.verticalLayout = QtWidgets.QVBoxLayout()
-		self.verticalLayout.setObjectName("verticalLayout")
 
 		self.graphicsView = QtWidgets.QGraphicsView(self.centralwidget)
 		self.graphicsView.setMinimumSize(QSize(653, 326))
 		self.graphicsView.setMaximumSize(QSize(653, 326))
-		self.graphicsView.setObjectName("graphicsView")
 		self.verticalLayout.addWidget(self.graphicsView)
 
 		self.pushButton_1 = QPushButton(self.centralwidget)
 		self.pushButton_1.setMinimumSize(QSize(320, 0))
-		self.pushButton_1.setObjectName("pushButton_1")
 		self.pushButton_1.clicked.connect(lambda: self.openImg('model'))
 		self.verticalLayout.addWidget(self.pushButton_1)
 
 		self.pushButton_2 = QPushButton(self.centralwidget)
-		self.pushButton_2.setObjectName("pushButton_2")
 		self.pushButton_2.clicked.connect(lambda: self.openImg('real'))
 		self.verticalLayout.addWidget(self.pushButton_2)
 
 		self.line_2 = QtWidgets.QFrame(self.centralwidget)
 		self.line_2.setFrameShape(QtWidgets.QFrame.HLine)
 		self.line_2.setFrameShadow(QtWidgets.QFrame.Sunken)
-		self.line_2.setObjectName("line_2")
 		self.verticalLayout.addWidget(self.line_2)
 
 		self.pushButton_3 = QPushButton(self.centralwidget)
-		self.pushButton_3.setObjectName("pushButton_3")
+		self.pushButton_3.clicked.connect(self.save_rgb_masks)
 		self.verticalLayout.addWidget(self.pushButton_3)
 
 		self.pushButton_4 = QPushButton(self.centralwidget)
-		self.pushButton_4.setObjectName("pushButton_4")
 		self.verticalLayout.addWidget(self.pushButton_4)
 
 		self.tableWidget = QtWidgets.QTableWidget(self.centralwidget)
 		self.tableWidget.setMinimumSize(QSize(0, 450))
 		self.tableWidget.setMaximumSize(QSize(653, 16777215))
-		self.tableWidget.setObjectName("tableWidget")
 		self.tableWidget.setColumnCount(7)
 		self.tableWidget.setRowCount(0)
 
@@ -272,72 +291,15 @@ class Ui_MainWindow(object):
 		self.line = QtWidgets.QFrame(self.centralwidget)
 		self.line.setFrameShape(QtWidgets.QFrame.VLine)
 		self.line.setFrameShadow(QtWidgets.QFrame.Sunken)
-		self.line.setObjectName("line")
 		self.horizontalLayout_3.addWidget(self.line)
 
 		self.verticalLayout_2 = QtWidgets.QVBoxLayout()
-		self.verticalLayout_2.setObjectName("verticalLayout_2")
 		self.graphicsView_2 = CustomGraphicsView(self.centralwidget)
 		self.graphicsView_2.setMinimumSize(QSize(820, 0))
-		self.graphicsView_2.setObjectName("graphicsView_2")
 		self.verticalLayout_2.addWidget(self.graphicsView_2)
-
-		self.gridLayout = QtWidgets.QGridLayout()
-		self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-		self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-		self.pushButton_05 = QPushButton(self.centralwidget)
-		self.pushButton_05.setMinimumSize(QSize(100, 0))
-		self.pushButton_05.clicked.connect(lambda: self.setText('u-'))
-
-		self.pushButton_06 = QPushButton(self.centralwidget)
-		self.pushButton_06.clicked.connect(lambda: self.setText('d-'))
-
-		self.pushButton_07 = QPushButton(self.centralwidget)
-		sizePolicy = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
-		sizePolicy.setHeightForWidth(self.pushButton_07.sizePolicy().hasHeightForWidth())
-		self.pushButton_07.setSizePolicy(sizePolicy)
-		self.pushButton_07.setMinimumSize(QSize(100, 0))
-		self.pushButton_07.clicked.connect(lambda: self.setText('a--'))
-
-		self.pushButton_08 = QPushButton(self.centralwidget)
-		sizePolicy.setHeightForWidth(self.pushButton_08.sizePolicy().hasHeightForWidth())
-		self.pushButton_08.setSizePolicy(sizePolicy)
-		self.pushButton_08.setMinimumSize(QSize(100, 0))
-		self.pushButton_08.clicked.connect(lambda: self.setText('a++'))
-
-		self.pushButton_09 = QPushButton(self.centralwidget)
-		self.pushButton_09.setMinimumSize(QSize(100, 0))
-		self.pushButton_09.clicked.connect(lambda: self.setText('u+'))
-
-		self.pushButton_10 = QPushButton(self.centralwidget)
-		self.pushButton_10.clicked.connect(lambda: self.setText('d+'))
-
-		self.label_01 = QLabel(self.centralwidget)
-		self.label_01.setMinimumSize(QSize(100, 0))
-		self.label_01.setAlignment(Qt.AlignCenter)
-
-		self.label_02 = QLabel(self.centralwidget)
-		self.label_02.setMinimumSize(QSize(100, 0))
-		self.label_02.setAlignment(Qt.AlignCenter)
-
-
-		self.verticalLayout_2.addLayout(self.gridLayout)
-
-		self.gridLayout.addItem(self.horizontalSpacer, 0, 0, 1, 1)
-		self.gridLayout.addWidget(self.pushButton_05, 0, 1, 1, 1)
-		self.gridLayout.addWidget(self.pushButton_07, 0, 2, 2, 1)
-		self.gridLayout.addWidget(self.label_01, 0, 3, 1, 1)
-		self.gridLayout.addWidget(self.pushButton_08, 0, 4, 2, 1)
-		self.gridLayout.addWidget(self.pushButton_09, 0, 5, 1, 1)
-		self.gridLayout.addItem(self.horizontalSpacer_2, 0, 6, 1, 1)
-		self.gridLayout.addWidget(self.pushButton_06, 1, 1, 1, 1)
-		self.gridLayout.addWidget(self.pushButton_10, 1, 5, 1, 1)
-		self.gridLayout.addWidget(self.label_02, 1, 3, 1, 1)
 
 		self.graphicsView_1 = CustomGraphicsView(self.centralwidget)
 		self.graphicsView_1.setMinimumSize(QSize(418, 0))
-		self.graphicsView_1.setObjectName("graphicsView_1")
 		self.verticalLayout_2.addWidget(self.graphicsView_1)
 		self.horizontalLayout_3.addLayout(self.verticalLayout_2)
 
@@ -354,16 +316,6 @@ class Ui_MainWindow(object):
 		self.pushButton_3.setText(_translate("MainWindow", "Сохранить RGB разметку"))
 		self.pushButton_4.setText(_translate("MainWindow", "Сохранить таблицу"))
 
-		self.pushButton_05.setText(_translate("MainWindow", "<---"))
-		self.pushButton_06.setText(_translate("MainWindow", "<---"))
-		self.pushButton_07.setText(_translate("MainWindow", "<=="))
-		self.pushButton_08.setText(_translate("MainWindow", "==>"))
-		self.pushButton_09.setText(_translate("MainWindow", "--->"))
-		self.pushButton_10.setText(_translate("MainWindow", "--->"))
-
-		self.label_01.setText("")
-		self.label_02.setText("")
-
 		self.scene = QtWidgets.QGraphicsScene()
 		self.graphicsView.setScene(self.scene)
 		self.load_logo("imgs/gosniias.png")
@@ -373,6 +325,12 @@ class Ui_MainWindow(object):
 		for idx, name in enumerate(table_names):
 			item = self.tableWidget.horizontalHeaderItem(idx)
 			item.setText(_translate("MainWindow", name))
+
+	def save_rgb_masks(self):
+		if self.model_path:
+			self.generate_rgb_masks('model')
+		if self.real_path:
+			self.generate_rgb_masks('real')
 
 	def load_logo(self, image_path):
 		pixmap = QPixmap(image_path)
@@ -390,9 +348,6 @@ class Ui_MainWindow(object):
 				self.real_path = folder_path
 			self.setImg(type)
 
-	def setText(self, type):
-		self.label_01.setText(type)
-
 
 	def setImg(self, type: str):
 		path = self.model_path if type == "model" else self.real_path
@@ -408,10 +363,8 @@ class Ui_MainWindow(object):
 			self.folder_actual = self.folder_counter[0]
 
 		def _get_first_file(path, subfolder):
-			return os.path.join(path, self.folder_actual, subfolder,
-								os.listdir(os.path.join(path, self.folder_actual, subfolder))[0])
+			return os.path.join(path, self.folder_actual, subfolder, os.listdir(os.path.join(path, self.folder_actual, subfolder))[0])
 
-		# Очищаем предыдущие данные
 		if type == "real":
 			self.real_instances = []
 			instance_dir = os.path.join(path, self.folder_actual, 'instance')
@@ -428,6 +381,63 @@ class Ui_MainWindow(object):
 			self.model_ir = _get_first_file(path, 'ir')
 			self.model_semantic = _get_first_file(path, 'semantic')
 			self.graphicsView_2.set_images(self.model_ir, self.model_semantic, instance_paths)
+
+	def generate_rgb_masks(self, type: str):
+		base_path = self.model_path if type == "model" else self.real_path
+		if not base_path:
+			QtWidgets.QMessageBox.warning(self.centralwidget, "Ошибка", "Сначала загрузите изображения")
+			return
+
+		instance_dir = os.path.join(base_path, self.folder_actual, 'instance')
+		semantic_path = os.path.join(base_path, self.folder_actual, 'semantic', os.listdir(os.path.join(base_path, self.folder_actual, 'semantic'))[0])
+
+		semantic_mask = cv2.imread(semantic_path, cv2.IMREAD_COLOR)
+		semantic_mask = cv2.cvtColor(semantic_mask, cv2.COLOR_BGR2RGB)
+
+		with open("colors.json", "r", encoding="utf-8") as f:
+			color_map = json.load(f)
+
+		class_to_id = {tuple(v): idx + 1 for idx, (k, v) in enumerate(color_map.items())}
+
+		# Загружаем инстансы
+		instance_masks, instance_paths = [], []
+		for f in sorted(os.listdir(instance_dir)):
+			path = os.path.join(instance_dir, f)
+			mask = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+			if mask is not None:
+				instance_masks.append(mask)
+				instance_paths.append(path)
+
+		# Пустое RGB (R=obj_id, G=class_id, B=0)
+		h, w = semantic_mask.shape[:2]
+		rgb_mask = np.zeros((h, w, 3), dtype=np.uint8)
+
+		object_info = {}
+		for obj_id, (mask, path) in enumerate(zip(instance_masks, instance_paths), 1):
+			obj_name = os.path.splitext(os.path.basename(path))[0]
+			object_info[obj_id] = obj_name
+			obj_area = mask > 0
+
+			# R канал — id объекта
+			rgb_mask[..., 0][obj_area] = obj_id
+
+			# G канал — id класса
+			colors_in_obj = semantic_mask[obj_area]
+			for (y, x), col in zip(np.argwhere(obj_area), colors_in_obj):
+				col_tuple = tuple(int(c) for c in col)
+				class_id = class_to_id.get(col_tuple, 0)
+				rgb_mask[y, x, 1] = class_id
+
+		rgb_dir = os.path.join(base_path, self.folder_actual, 'RGB')
+		os.makedirs(rgb_dir, exist_ok=True)
+		rgb_output_path = os.path.join(rgb_dir, f"{type}_rgb.png")
+		cv2.imwrite(rgb_output_path, cv2.cvtColor(rgb_mask, cv2.COLOR_RGB2BGR))
+
+		json_path = os.path.join(rgb_dir, f"{type}_objects.json")
+		with open(json_path, 'w', encoding="utf-8") as f:
+			json.dump(object_info, f, indent=4, ensure_ascii=False)
+
+		QtWidgets.QMessageBox.information(self.centralwidget, "Успех", f"RGB-разметка сохранена в {rgb_output_path}")
 
 
 class MainWindow(QMainWindow):
