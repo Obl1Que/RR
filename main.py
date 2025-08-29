@@ -16,17 +16,24 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 	def __init__(self, parent=None):
 		super().__init__(parent)
 		self.setMouseTracking(True)
+
 		self.semantic_mask = None
 		self.instance_masks = []
 		self.instance_paths = []
+
 		self.base_image = None
 		self.base_pixmap = None
+
 		self.current_class = None
 		self.current_instance = None
+
 		self.scene = QGraphicsScene(self)
 		self.setScene(self.scene)
+
 		self.highlight_cache = {}
 		self.instance_cache = {}
+
+		self.last_ctrl_pressed = False
 
 	def set_images(self, base_image_path, semantic_mask_path, instance_paths=None):
 		self.highlight_cache.clear()
@@ -55,6 +62,7 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 				mask = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
 				if mask is not None:
 					self.instance_masks.append(mask)
+
 		self.update_display(force_base=True)
 
 	def update_display(self, pixmap=None, force_base=False):
@@ -84,7 +92,6 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 			return
 
 		if ctrl_pressed:
-			# Режим инстансов - игнорируем текущий класс
 			self.current_class = None
 			if self.instance_masks:
 				for i, mask in enumerate(self.instance_masks):
@@ -93,17 +100,14 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 							return
 
 						self.current_instance = i
-
 						if i in self.instance_cache:
 							self.update_display(pixmap=self.instance_cache[i])
 							return
 
-						# Создаем подсветку для инстанса
 						highlighted = self.base_image.copy()
 						mask_bool = (mask > 0)
 						highlight_color = np.array([255, 255, 255], dtype=np.uint8)
 						alpha = 0.75
-
 						for c in range(3):
 							highlighted[:, :, c] = np.where(
 								mask_bool,
@@ -111,7 +115,6 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 								highlighted[:, :, c]
 							)
 
-						# Кэшируем и отображаем
 						height, width, _ = highlighted.shape
 						q_img = QImage(highlighted.data, width, height, 3 * width, QImage.Format_RGB888).copy()
 						pixmap = QPixmap.fromImage(q_img)
@@ -119,21 +122,17 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 						self.update_display(pixmap=pixmap)
 						return
 		else:
-			# Режим семантики - игнорируем текущий инстанс
 			self.current_instance = None
-			if self.semantic_mask is not None and 0 <= x < self.semantic_mask.shape[1] and 0 <= y < \
-					self.semantic_mask.shape[0]:
+			if self.semantic_mask is not None and 0 <= x < self.semantic_mask.shape[1] and 0 <= y < self.semantic_mask.shape[0]:
 				class_id = self.semantic_mask[y, x]
 				self.highlight_class(class_id)
 				return
 
-		# Если ничего не найдено, сбрасываем подсветку
 		self.current_instance = None
 		self.current_class = None
 		self.update_display(force_base=True)
 
 	def highlight_class(self, class_id):
-		"""Подсветка семантического класса"""
 		if class_id == self.current_class:
 			return
 
@@ -147,16 +146,10 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 			self.update_display(pixmap=self.highlight_cache[class_id])
 			return
 
-		# Создаем маску
 		mask = (self.semantic_mask == class_id).astype(np.uint8)
-
-		# Создаем изображение с подсветкой
 		highlighted = self.base_image.copy()
-
-		# Альфа-смешение с полупрозрачным цветом
 		highlight_color = np.array([255, 255, 255], dtype=np.uint8)
 		alpha = 0.75
-
 		for c in range(3):
 			highlighted[:, :, c] = np.where(
 				mask,
@@ -164,7 +157,6 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 				highlighted[:, :, c]
 			)
 
-		# Конвертируем и кэшируем
 		height, width, _ = highlighted.shape
 		q_img = QImage(highlighted.data, width, height, 3 * width, QImage.Format_RGB888).copy()
 		pixmap = QPixmap.fromImage(q_img)
@@ -177,7 +169,6 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 			pos = self.mapToScene(event.pos())
 			x, y = int(pos.x()), int(pos.y())
 
-			# Проверяем границы изображения
 			if not (0 <= x < self.base_image.shape[1] and 0 <= y < self.base_image.shape[0]):
 				return
 
@@ -190,7 +181,6 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 						print(f"Instance: {instance_name}")
 						break
 			elif self.semantic_mask is not None:
-				# Режим семантики
 				class_id = self.semantic_mask[y, x]
 				print(f"Class ID: {class_id}")
 
@@ -200,14 +190,10 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 		if self.base_image is None:
 			return super().mouseMoveEvent(event)
 
-		# Определяем состояние Ctrl
 		new_ctrl_pressed = event.modifiers() & Qt.ControlModifier
-
-		# Если состояние Ctrl изменилось, сбрасываем текущие подсвеченные элементы
-		if hasattr(self, 'last_ctrl_pressed') and self.last_ctrl_pressed != new_ctrl_pressed:
+		if self.last_ctrl_pressed != new_ctrl_pressed:
 			self.current_class = None
 			self.current_instance = None
-
 		self.last_ctrl_pressed = new_ctrl_pressed
 
 		pos = self.mapToScene(event.pos())
@@ -272,6 +258,7 @@ class Ui_MainWindow(object):
 		self.verticalLayout.addWidget(self.pushButton_3)
 
 		self.pushButton_4 = QPushButton(self.centralwidget)
+		self.pushButton_4.clicked.connect(self.save_table)
 		self.verticalLayout.addWidget(self.pushButton_4)
 
 		self.tableWidget = QtWidgets.QTableWidget(self.centralwidget)
@@ -325,6 +312,22 @@ class Ui_MainWindow(object):
 		for idx, name in enumerate(table_names):
 			item = self.tableWidget.horizontalHeaderItem(idx)
 			item.setText(_translate("MainWindow", name))
+
+	def save_table(self):
+		import csv
+		file_path, _ = QtWidgets.QFileDialog.getSaveFileName(self.centralwidget, "Сохранить таблицу", "",
+															 "CSV Files (*.csv)")
+		if not file_path:
+			return
+
+		with open(file_path, "w", newline="") as f:
+			writer = csv.writer(f)
+			for row in range(self.tableWidget.rowCount()):
+				writer.writerow(
+					[self.tableWidget.item(row, c).text() if self.tableWidget.item(row, c) else "" for c in
+					 range(7)])
+
+		QtWidgets.QMessageBox.information(self.centralwidget, "Успех", f"Таблица сохранена в {file_path}")
 
 	def save_rgb_masks(self):
 		if self.model_path:
@@ -381,6 +384,14 @@ class Ui_MainWindow(object):
 			self.model_ir = _get_first_file(path, 'ir')
 			self.model_semantic = _get_first_file(path, 'semantic')
 			self.graphicsView_2.set_images(self.model_ir, self.model_semantic, instance_paths)
+
+	def get_rgb_mask(self, type):
+		rgb_dir = os.path.join(self.model_path if type == 'model' else self.real_path, self.folder_actual, 'RGB')
+		rgb_file = os.path.join(rgb_dir, f"{type}_rgb.png")
+		if os.path.exists(rgb_file):
+			mask = cv2.imread(rgb_file, cv2.IMREAD_COLOR)
+			return cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
+		return None
 
 	def generate_rgb_masks(self, type: str):
 		base_path = self.model_path if type == "model" else self.real_path
