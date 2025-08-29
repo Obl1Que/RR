@@ -13,9 +13,13 @@ from PyQt5.QtWidgets import QMainWindow, QApplication, QGraphicsPixmapItem, QGra
 
 
 class CustomGraphicsView(QtWidgets.QGraphicsView):
-	def __init__(self, parent=None):
+	last_clicks = {"model": None, "real": None}
+
+	def __init__(self, parent=None, view_type=None, table=None):
 		super().__init__(parent)
 		self.setMouseTracking(True)
+		self.type = view_type
+		self.table = table
 
 		self.semantic_mask = None
 		self.instance_masks = []
@@ -132,6 +136,29 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 		self.current_class = None
 		self.update_display(force_base=True)
 
+	def get_pixel_info(self, x, y):
+		name = None
+		object_id_model, class_id_model = None, None
+		object_id_real, class_id_real = None, None
+		mean_lum_model, mean_lum_real = None, None
+
+		if self.instance_masks:
+			for i, mask in enumerate(self.instance_masks, 1):
+				if mask is not None and mask[y, x] > 0:
+					name = os.path.basename(self.instance_paths[i - 1])
+					object_id_model = i
+					break
+
+		if self.semantic_mask is not None:
+			class_id_model = int(self.semantic_mask[y, x])
+
+		if self.base_image is not None:
+			pixel = self.base_image[y, x]
+			mean_lum_real = float(np.mean(pixel))
+
+		return [name, object_id_model, class_id_model, mean_lum_real,
+				object_id_real, class_id_real, mean_lum_real]
+
 	def highlight_class(self, class_id):
 		if class_id == self.current_class:
 			return
@@ -165,24 +192,60 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
 		self.update_display(pixmap=pixmap)
 
 	def mousePressEvent(self, event):
-		if event.button() == Qt.LeftButton:
+		if event.button() == Qt.LeftButton and self.base_image is not None:
 			pos = self.mapToScene(event.pos())
 			x, y = int(pos.x()), int(pos.y())
 
 			if not (0 <= x < self.base_image.shape[1] and 0 <= y < self.base_image.shape[0]):
 				return
 
-			ctrl_pressed = event.modifiers() & Qt.ControlModifier
+			info = {
+				"name": None,
+				"object_id": None,
+				"class_id": None,
+				"mean_lum": None
+			}
 
-			if ctrl_pressed and self.instance_masks:
-				for i, mask in enumerate(self.instance_masks):
+			# instance
+			if self.instance_masks:
+				for i, mask in enumerate(self.instance_masks, 1):
 					if mask is not None and mask[y, x] > 0:
-						instance_name = os.path.basename(self.instance_paths[i])
-						print(f"Instance: {instance_name}")
+						info["name"] = os.path.basename(self.instance_paths[i - 1])
+						info["object_id"] = i
 						break
-			elif self.semantic_mask is not None:
-				class_id = self.semantic_mask[y, x]
-				print(f"Class ID: {class_id}")
+
+			# semantic
+			if self.semantic_mask is not None:
+				info["class_id"] = int(self.semantic_mask[y, x])
+
+			# luminance
+			if self.base_image is not None:
+				pixel = self.base_image[y, x]
+				info["mean_lum"] = round(float(np.mean(pixel)), 2)
+
+			CustomGraphicsView.last_clicks[self.type] = info
+
+			if CustomGraphicsView.last_clicks["real"] and CustomGraphicsView.last_clicks["model"]:
+				real = CustomGraphicsView.last_clicks["real"]
+				model = CustomGraphicsView.last_clicks["model"]
+
+				if self.table:
+					row_idx = self.table.rowCount()
+					self.table.insertRow(row_idx)
+					values = [
+						model['name'],
+						model['object_id'],
+						model['class_id'],
+						real['mean_lum'],
+						real['object_id'],
+						real['class_id'],
+						real['mean_lum']
+					]
+					for col, val in enumerate(values):
+						item = QtWidgets.QTableWidgetItem(str(val) if val is not None else "")
+						self.table.setItem(row_idx, col, item)
+
+				CustomGraphicsView.last_clicks = {"model": None, "real": None}
 
 		super().mousePressEvent(event)
 
@@ -281,11 +344,11 @@ class Ui_MainWindow(object):
 		self.horizontalLayout_3.addWidget(self.line)
 
 		self.verticalLayout_2 = QtWidgets.QVBoxLayout()
-		self.graphicsView_2 = CustomGraphicsView(self.centralwidget)
+		self.graphicsView_2 = CustomGraphicsView(self.centralwidget, view_type="model", table=self.tableWidget)
 		self.graphicsView_2.setMinimumSize(QSize(820, 0))
 		self.verticalLayout_2.addWidget(self.graphicsView_2)
 
-		self.graphicsView_1 = CustomGraphicsView(self.centralwidget)
+		self.graphicsView_1 = CustomGraphicsView(self.centralwidget, view_type="real", table=self.tableWidget)
 		self.graphicsView_1.setMinimumSize(QSize(418, 0))
 		self.verticalLayout_2.addWidget(self.graphicsView_1)
 		self.horizontalLayout_3.addLayout(self.verticalLayout_2)
